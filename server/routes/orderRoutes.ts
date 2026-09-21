@@ -2,6 +2,7 @@ import express from "express";
 import auth from "../middleware/auth.js";
 import {
   createOrder,
+  verifyRazorpayPayment,
   getAllOrders,
   getOrderLocation,
   getSingleOrder,
@@ -13,6 +14,7 @@ import admin from "../middleware/admin.js";
 const orderRouter = express.Router();
 
 orderRouter.post("/", auth, createOrder);
+orderRouter.post("/verify-razorpay-payment", auth, verifyRazorpayPayment);
 orderRouter.get("/", auth, getUserOrders);
 orderRouter.get("/all", auth, admin, getAllOrders);
 orderRouter.get("/:id", auth, getSingleOrder);

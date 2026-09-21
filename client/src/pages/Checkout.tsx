@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Address } from "../types";
 import {
   ArrowLeft,
@@ -15,6 +15,12 @@ import CheckoutReview from "../components/Checkout/CheckoutReview";
 import api from "../config/api";
 import toast from "react-hot-toast";
 import { useAuth } from "../context/AuthContext";
+
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
 
 const Checkout = () => {
   const navigate = useNavigate();
@@ -38,7 +44,7 @@ const Checkout = () => {
     lng: 0,
   });
 
-  const [paymentMethod, setPaymentMethod] = useState("card");
+  const [paymentMethod, setPaymentMethod] = useState("razorpay");
 
   const deliveryFee = cartTotal > 20 ? 0 : 1.99;
   const tax = cartTotal * 0.08;
@@ -65,25 +71,60 @@ const Checkout = () => {
       const { data } = await api.post("/orders", orderData);
       console.log(data);
 
-      if (data.url) {
-        window.location.href = data.url;
+      if (data.razorpay) {
+        const options = {
+          key: data.razorpay.key,
+          amount: data.razorpay.amount,
+          currency: data.razorpay.currency,
+          order_id: data.razorpay.orderId,
+          name: "GreenCart",
+          description: "Order Payment",
+          handler: async (response: any) => {
+            try {
+              await api.post("/orders/verify-razorpay-payment", {
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                orderId: data.order.id,
+              });
+              clearCart();
+              toast.success("Order placed successfully");
+              navigate("/");
+            } catch (err: any) {
+              toast.error("Payment verification failed");
+            } finally {
+              setLoading(false);
+            }
+          },
+          modal: {
+            ondismiss: () => setLoading(false),
+          },
+          prefill: {
+            name: user?.name,
+            email: user?.email,
+          },
+          theme: { color: "#2f5233" },
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.open();
         return;
       }
+
+      // Cash on Delivery
       clearCart();
       toast.success("Order placed successfully");
       navigate("/");
-
-      // navigate(`/orders/${data.order.id}`);
     } catch (error: any) {
       toast.error(error.response?.data?.message || error.message);
-    } finally {
       setLoading(false);
+    } finally {
       scrollTo(0, 0);
     }
   };
 
   // Populate address from user's default address
-  useState(() => {
+  useEffect(() => {
     if (user?.addresses?.length) {
       const defaultAddr =
         user.addresses.find((a) => a.isDefault) || user.addresses[0];
@@ -99,7 +140,7 @@ const Checkout = () => {
         lng: defaultAddr?.lng || 0,
       });
     }
-  });
+  }, [user]);
 
   if (items.length === 0) {
     return (

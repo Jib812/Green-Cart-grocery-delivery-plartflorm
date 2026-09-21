@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
+import crypto from "crypto";
 import { prisma } from "../config/prisma.js";
 import { inngest } from "../inngest/index.js";
-// import Stripe from "stripe";
+import { razorpay } from "../config/razorpay.js";
 
 // Create order
 // POST /api/orders
@@ -30,9 +31,6 @@ export const createOrder = async (req: Request, res: Response) => {
   }
 
   const orderItems = items.map((item: any) => {
-    // looks up the product by id:
-    // item.product = "abc123"
-    // productMap["abc123"] = { name: "Apple", price: 2.99, stock: 10 }
     const dbProduct = productMap[item.product];
     if (!dbProduct) throw new Error(`Product ${item.product} not found`);
     return {
@@ -74,35 +72,29 @@ export const createOrder = async (req: Request, res: Response) => {
     },
   });
 
-  if (paymentMethod === "card") {
-    
-    // stripe payment link
-    // const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
-    // create session
-   
-   
-  /* 
-    const session = await stripe.checkout.sessions.create({
-      success_url: `${req.headers.origin}/orders?clearCart=true`,
-      cancel_url: `${req.headers.origin}/checkout`,
-      line_items: [
-        {
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: "Payment Groceries",
-            },
-            unit_amount: Math.round(total * 100),
-          },
-          quantity: 1,
-        },
-      ],
-      mode: "payment",
-      metadata: { orderId: order.id },
+  if (paymentMethod === "razorpay") {
+    const razorpayOrder = await razorpay.orders.create({
+      amount: Math.round(total * 100), // amount in paise
+      currency: "INR",
+      receipt: order.id,
     });
-    */
-    return res.json({url:session.url})
+
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { razorpayOrderId: razorpayOrder.id },
+    });
+
+    return res.json({
+      razorpay: {
+        orderId: razorpayOrder.id,
+        amount: razorpayOrder.amount,
+        currency: razorpayOrder.currency,
+        key: process.env.RAZORPAY_KEY_ID,
+      },
+      order,
+    });
   }
+
   //  if cash
   res.json({ order }); // send order back to frontend
 
@@ -131,16 +123,83 @@ export const createOrder = async (req: Request, res: Response) => {
   });
 };
 
+// Verify Razorpay payment
+// POST /api/orders/verify-razorpay-payment
+export const verifyRazorpayPayment = async (req: Request, res: Response) => {
+  const {
+    razorpay_order_id,
+    razorpay_payment_id,
+    razorpay_signature,
+    orderId,
+  } = req.body;
+
+  if (
+    !razorpay_order_id ||
+    !razorpay_payment_id ||
+    !razorpay_signature ||
+    !orderId
+  ) {
+    return res.status(400).json({ message: "Missing payment details" });
+  }
+
+  const body = `${razorpay_order_id}|${razorpay_payment_id}`;
+  const expectedSignature = crypto
+    .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET as string)
+    .update(body)
+    .digest("hex");
+
+  if (expectedSignature !== razorpay_signature) {
+    return res.status(400).json({ message: "Payment verification failed" });
+  }
+
+  const order = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!order) {
+    return res.status(404).json({ message: "Order not found" });
+  }
+
+  const items = order.items as any[];
+
+  const updatedOrder = await prisma.order.update({
+    where: { id: orderId },
+    data: {
+      isPaid: true,
+      paidAt: new Date(),
+      razorpayPaymentId: razorpay_payment_id,
+    },
+  });
+
+  //   Decrease stock now that payment is confirmed
+  for (const item of items) {
+    await prisma.product.update({
+      where: { id: item.product },
+      data: { stock: { decrement: item.quantity } },
+    });
+  }
+
+  for (const item of items) {
+    await inngest.send({
+      name: "inventory/stock.updated",
+      data: { productId: item.product },
+    });
+  }
+  await inngest.send({
+    name: "order/placed",
+    data: { orderId: updatedOrder.id },
+  });
+
+  res.json({ success: true, order: updatedOrder });
+};
+
 // Get user's orders
 // Get /api/orders
 export const getUserOrders = async (req: Request, res: Response) => {
   const { status } = req.query;
 
   //   Get all my orders EXCEPT ones where:
-  //- payment method is card AND payment is not done yet
+  //- payment method is razorpay AND payment is not done yet
   const where: any = {
     userId: req.user?.id,
-    NOT: [{ paymentMethod: "card", isPaid: false }],
+    NOT: [{ paymentMethod: "razorpay", isPaid: false }],
   };
 
   if (status && status !== "all") {
@@ -210,7 +269,7 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
 // GET /api/orders/all
 export const getAllOrders = async (req: Request, res: Response) => {
   const orders = await prisma.order.findMany({
-    where: { NOT: [{ paymentMethod: "card", isPaid: false }] },
+    where: { NOT: [{ paymentMethod: "razorpay", isPaid: false }] },
     include: {
       user: { select: { name: true, email: true } },
       deliveryPartner: { select: { name: true, phone: true, email: true } },

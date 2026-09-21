@@ -1,9 +1,9 @@
-# 🛒 Instacart — Full Stack Grocery Delivery Platform
+# 🛒 Greencart — Full Stack Grocery Delivery Platform
 
 A full-stack grocery delivery application built with the **PERN stack** (PostgreSQL, Express, React, Node.js), featuring a customer storefront, an admin panel, and a delivery partner dashboard with real-time order tracking.
 
-🔗 **Live Demo:** [instacart-client.vercel.app](https://instacart-client.vercel.app/)
-💻 **Repository:** [github.com/Kafoor-Nimas/Instacart](https://github.com/Kafoor-Nimas/Instacart)
+🔗 **Live Demo:** [Greencart-client.vercel.app](https://Greencart-client.vercel.app/)
+💻 **Repository:** [github.com/Kafoor-Nimas/Greencart](https://github.com/Kafoor-Nimas/Greencart)
 
 ---
 
@@ -102,7 +102,7 @@ A full-stack grocery delivery application built with the **PERN stack** (Postgre
 ## 📁 Project Structure
 
 ```
-Instacart/
+Greencart/
 ├── client/                 # React frontend
 │   ├── src/
 │   │   ├── components/     # Reusable UI components
@@ -137,8 +137,8 @@ Instacart/
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/Kafoor-Nimas/Instacart.git
-cd Instacart
+git clone https://github.com/Kafoor-Nimas/Greencart.git
+cd Greencart
 ```
 
 ### 2. Set up the backend
