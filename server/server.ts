@@ -23,7 +23,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-    origin: "https://green-cart-frontend-4ci7.onrender.com",
+    origin: "https://green-cart-grocery-delivery-plartflorm-ougw.onrender.com",
     credentials: true
 }));
 
