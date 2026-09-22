@@ -22,7 +22,12 @@ const app = express();
 // );
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: "https://green-cart-frontend-4ci7.onrender.com",
+    credentials: true
+}));
+
+
 app.use(express.json());
 
 const port = process.env.PORT || 5000;
